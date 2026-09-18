@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Days since Current Concept posted</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #ffffff;
+    --ink: #000000;
+    --quiet: #6b6b6b;
+    --rule: #e2e2e2;
+    --signal: #f5b301;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #000000;
+      --ink: #ffffff;
+      --quiet: #8f8f8f;
+      --rule: #262626;
+      --signal: #ffc400;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6vmin;
+  }
+  main {
+    width: 100%;
+    max-width: 44rem;
+  }
+  .count {
+    font-weight: 900;
+    font-size: clamp(6rem, 34vw, 22rem);
+    line-height: 0.82;
+    letter-spacing: -0.045em;
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+  }
+  .count sup {
+    font-size: 0.16em;
+    font-weight: 600;
+    letter-spacing: 0;
+    vertical-align: super;
+    color: var(--signal);
+  }
+  .statement {
+    font-size: clamp(1.05rem, 3.2vw, 1.5rem);
+    font-weight: 600;
+    margin: 1.4rem 0 0;
+    max-width: 22ch;
+    text-wrap: balance;
+  }
+  .rule {
+    height: 6px;
+    background: var(--signal);
+    width: 4.5rem;
+    margin: 2.2rem 0 1.4rem;
+  }
+  .video {
+    margin: 0;
+    color: var(--quiet);
+    max-width: 52ch;
+  }
+  .video a {
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 2px solid var(--signal);
+    padding-bottom: 1px;
+  }
+  .video a:hover { background: var(--signal); color: #000; }
+  .video a:focus-visible {
+    outline: 3px solid var(--signal);
+    outline-offset: 3px;
+  }
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--rule);
+    color: var(--quiet);
+    font-size: 0.85rem;
+  }
+  footer a { color: inherit; }
+  .empty .count { color: var(--quiet); }
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite">
+  <p class="count" id="count">&middot;&middot;&middot;</p>
+  <p class="statement" id="statement">Checking the channel.</p>
+  <div class="rule"></div>
+  <p class="video" id="video"></p>
+  <footer id="footer"></footer>
+</main>
+
+<script>
+const CHANNEL_URL = "https://www.youtube.com/@currentconcept";
+const DAY = 86400000;
+
+const el = {
+  count: document.getElementById("count"),
+  statement: document.getElementById("statement"),
+  video: document.getElementById("video"),
+  footer: document.getElementById("footer"),
+  app: document.getElementById("app"),
+};
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString(undefined, {
+    day: "numeric", month: "long", year: "numeric"
+  });
+}
+
+function render(data) {
+  const v = data && data.video;
+  if (!v || !v.published) {
+    el.app.classList.add("empty");
+    el.count.textContent = "—";
+    el.statement.textContent = "No video data yet.";
+    el.video.textContent = "Run the “Update video data” action in the repository, then reload.";
+    el.footer.innerHTML = '<a href="' + CHANNEL_URL + '">Current Concept on YouTube</a>';
+    return;
+  }
+
+  const days = Math.max(0, Math.floor((Date.now() - new Date(v.published)) / DAY));
+  document.title = days + " days since Current Concept posted";
+
+  el.count.innerHTML = days + '<sup>' + (days === 1 ? "day" : "days") + '</sup>';
+  el.statement.textContent = days === 0
+    ? "Current Concept posted today."
+    : "since Current Concept last posted a full video.";
+
+  el.video.innerHTML =
+    'Last one: <a href="https://www.youtube.com/watch?v=' + v.id + '">' +
+    v.title.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c])) +
+    "</a>, " + fmtDate(v.published) + ". Shorts don’t count.";
+
+  el.footer.innerHTML =
+    "Checked " + (data.checked ? fmtDate(data.checked) : "—") +
+    ' · <a href="' + CHANNEL_URL + '">Current Concept on YouTube</a>';
+}
+
+fetch("data.json?t=" + Date.now(), { cache: "no-store" })
+  .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)))
+  .then(render)
+  .catch(() => render(null));
+</script>
+</body>
+</html>
