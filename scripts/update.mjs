@@ -1,10 +1,16 @@
-// Finds the newest non-Short video on the channel and writes data.json.
+// Keeps data.json up to date with every non-Short video this channel has
+// posted, as far back as we've been watching.
 //
-// How Shorts get filtered: the RSS feed doesn't say how long a video is, but
-// youtube.com/shorts/<id> returns 200 for an actual Short and redirects (303)
-// to /watch for a normal video. One cheap request per video, no API key.
+// The RSS feed only carries the last 15 uploads, Shorts included, so history
+// is built by accumulation: each run merges anything new into what's already
+// in data.json, and nothing is ever dropped. Run it for a year and you have a
+// year of gaps, even though any single fetch sees 15 entries.
+//
+// Shorts are filtered by asking for youtube.com/shorts/<id>: a real Short
+// answers 200, a normal video redirects to /watch. Verdicts are cached in
+// data.json so each video is only ever checked once.
 
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 const CHANNEL_ID = "UCW5i5rLbDiu9RhCEXj4BAZw"; // @currentconcept
 const FEED = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
@@ -31,8 +37,7 @@ function parseFeed(xml) {
         published: pick("published"),
       };
     })
-    .filter((e) => e.id && e.published)
-    .sort((a, b) => new Date(b.published) - new Date(a.published));
+    .filter((e) => e.id && e.published);
 }
 
 async function isShort(id) {
@@ -45,26 +50,57 @@ async function isShort(id) {
   throw new Error(`unexpected status ${res.status} for ${id}`);
 }
 
+let existing = { videos: [], shorts: [] };
+try {
+  existing = JSON.parse(await readFile("data.json", "utf8"));
+} catch {
+  console.log("no usable data.json, starting fresh");
+}
+
+const videos = new Map((existing.videos || []).map((v) => [v.id, v]));
+const shorts = new Set(existing.shorts || []);
+
 const feedRes = await fetch(FEED, { headers: { "user-agent": UA } });
 if (!feedRes.ok) throw new Error(`feed request failed: ${feedRes.status}`);
 
 const entries = parseFeed(await feedRes.text());
 if (!entries.length) throw new Error("no entries found in feed");
 
-let latest = null;
+let added = 0;
 for (const entry of entries) {
-  if (!(await isShort(entry.id))) {
-    latest = entry;
-    break;
+  if (shorts.has(entry.id)) continue;
+  if (videos.has(entry.id)) {
+    videos.set(entry.id, { ...videos.get(entry.id), title: entry.title });
+    continue;
   }
-  console.log(`skipping Short: ${entry.title}`);
+  if (await isShort(entry.id)) {
+    shorts.add(entry.id);
+    console.log(`Short, ignoring: ${entry.title}`);
+  } else {
+    videos.set(entry.id, entry);
+    added++;
+    console.log(`new video: ${entry.title} (${entry.published})`);
+  }
 }
-if (!latest) throw new Error("every video in the feed looks like a Short");
 
-const data = {
-  video: latest,
-  checked: new Date().toISOString(),
-};
+const sorted = [...videos.values()].sort(
+  (a, b) => new Date(b.published) - new Date(a.published)
+);
+if (!sorted.length) throw new Error("every video in the feed looks like a Short");
 
-await writeFile("data.json", JSON.stringify(data, null, 2) + "\n");
-console.log(`latest full video: ${latest.title} (${latest.published})`);
+await writeFile(
+  "data.json",
+  JSON.stringify(
+    {
+      checked: new Date().toISOString(),
+      videos: sorted,
+      shorts: [...shorts].slice(-200),
+    },
+    null,
+    2
+  ) + "\n"
+);
+
+console.log(
+  `${sorted.length} videos on record (${added} new), latest ${sorted[0].published}`
+);

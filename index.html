@@ -25,26 +25,20 @@
     }
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
   body {
     margin: 0;
+    padding: 8vmin 6vmin 6vmin;
     background: var(--paper);
     color: var(--ink);
     font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
     font-size: 17px;
     line-height: 1.5;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 6vmin;
   }
-  main {
-    width: 100%;
-    max-width: 44rem;
-  }
+  main { max-width: 46rem; margin: 0 auto; }
+
   .count {
     font-weight: 900;
-    font-size: clamp(6rem, 34vw, 22rem);
+    font-size: clamp(5rem, 26vw, 16rem);
     line-height: 0.82;
     letter-spacing: -0.045em;
     font-variant-numeric: tabular-nums;
@@ -60,41 +54,47 @@
   .statement {
     font-size: clamp(1.05rem, 3.2vw, 1.5rem);
     font-weight: 600;
-    margin: 1.4rem 0 0;
-    max-width: 22ch;
+    margin: 1.3rem 0 0;
+    max-width: 24ch;
     text-wrap: balance;
   }
-  .rule {
-    height: 6px;
-    background: var(--signal);
-    width: 4.5rem;
-    margin: 2.2rem 0 1.4rem;
-  }
-  .video {
-    margin: 0;
+  .rule { height: 6px; background: var(--signal); width: 4.5rem; margin: 2rem 0 1.3rem; }
+
+  p.video { margin: 0 0 2.6rem; color: var(--quiet); max-width: 54ch; }
+  a { color: var(--ink); text-decoration: none; border-bottom: 2px solid var(--signal); }
+  a:hover { background: var(--signal); color: #000; }
+  a:focus-visible { outline: 3px solid var(--signal); outline-offset: 3px; }
+
+  section { margin-bottom: 2.6rem; }
+  h2 {
+    font-size: 0.8rem;
+    font-weight: 600;
     color: var(--quiet);
-    max-width: 52ch;
+    margin: 0 0 0.9rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--rule);
   }
-  .video a {
-    color: var(--ink);
-    text-decoration: none;
-    border-bottom: 2px solid var(--signal);
-    padding-bottom: 1px;
-  }
-  .video a:hover { background: var(--signal); color: #000; }
-  .video a:focus-visible {
-    outline: 3px solid var(--signal);
-    outline-offset: 3px;
-  }
-  footer {
-    margin-top: 3.5rem;
-    padding-top: 0.9rem;
-    border-top: 1px solid var(--rule);
-    color: var(--quiet);
-    font-size: 0.85rem;
-  }
-  footer a { color: inherit; }
-  .empty .count { color: var(--quiet); }
+
+  .verdict { font-size: 1.12rem; font-weight: 600; margin: 0 0 0.5rem; max-width: 40ch; text-wrap: balance; }
+  .due { margin: 0; color: var(--quiet); max-width: 46ch; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: 1.4rem 1rem; }
+  .stat b { display: block; font-size: 1.7rem; font-weight: 900; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 0.82rem; color: var(--quiet); }
+
+  .bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
+  .bars div { flex: 1; background: var(--rule); min-height: 2px; }
+  .bars div.now { background: var(--signal); }
+  .bars div.record { background: var(--quiet); }
+  .caption { margin: 0.6rem 0 0; font-size: 0.84rem; color: var(--quiet); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+  td { padding: 0.45rem 0; border-bottom: 1px solid var(--rule); vertical-align: baseline; }
+  td.gap { text-align: right; white-space: nowrap; color: var(--quiet); font-variant-numeric: tabular-nums; }
+  td.title { padding-right: 1rem; }
+  .date { color: var(--quiet); font-size: 0.85rem; }
+
+  footer { color: var(--quiet); font-size: 0.85rem; padding-top: 0.9rem; border-top: 1px solid var(--rule); }
 </style>
 </head>
 <body>
@@ -103,58 +103,143 @@
   <p class="statement" id="statement">Checking the channel.</p>
   <div class="rule"></div>
   <p class="video" id="video"></p>
+  <div id="stats-area"></div>
   <footer id="footer"></footer>
 </main>
 
 <script>
 const CHANNEL_URL = "https://www.youtube.com/@currentconcept";
 const DAY = 86400000;
+const el = (id) => document.getElementById(id);
 
-const el = {
-  count: document.getElementById("count"),
-  statement: document.getElementById("statement"),
-  video: document.getElementById("video"),
-  footer: document.getElementById("footer"),
-  app: document.getElementById("app"),
-};
+const fmtDate = (d) =>
+  new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+const fmtShort = (d) =>
+  new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" });
+const days = (n) => Math.round(n) + (Math.round(n) === 1 ? " day" : " days");
+const escape = (s) => s.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
 
-function fmtDate(iso) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    day: "numeric", month: "long", year: "numeric"
-  });
+function stats(videos) {
+  const gaps = [];
+  for (let i = 0; i < videos.length - 1; i++) {
+    gaps.push({
+      days: (new Date(videos[i].published) - new Date(videos[i + 1].published)) / DAY,
+      after: videos[i + 1],
+      before: videos[i],
+    });
+  }
+  const sorted = gaps.map((g) => g.days).sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return {
+    gaps,
+    median: sorted.length ? (sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2) : null,
+    mean: sorted.length ? sorted.reduce((a, b) => a + b, 0) / sorted.length : null,
+    longest: gaps.length ? gaps.reduce((a, b) => (b.days > a.days ? b : a)) : null,
+    shortest: gaps.length ? gaps.reduce((a, b) => (b.days < a.days ? b : a)) : null,
+  };
+}
+
+function verdict(current, s) {
+  if (!s.gaps.length) return "Only one video on record so far, so there's nothing to compare this to yet.";
+  if (current > s.longest.days)
+    return "This is the longest gap on record — the previous worst was " + days(s.longest.days) + ".";
+  const shorter = s.gaps.filter((g) => g.days < current).length;
+  const n = s.gaps.length;
+  if (shorter === 0) return "Shorter than every gap on record.";
+  if (shorter / n >= 0.75) return "Longer than " + shorter + " of the " + n + " gaps on record.";
+  if (shorter / n <= 0.25) return "Shorter than usual — " + (n - shorter) + " of the " + n + " gaps ran longer.";
+  return "Ordinary so far: longer than " + shorter + " of the " + n + " gaps on record.";
+}
+
+function dueLine(current, s, latest) {
+  if (s.median === null) return "";
+  const over = current - s.median;
+  if (over < 0)
+    return "At the usual " + days(s.median) + ", the next one is due around " +
+      fmtDate(new Date(latest).getTime() + s.median * DAY) + ".";
+  if (Math.round(over) === 0) return "That's exactly the usual gap.";
+  return "That's " + days(over) + " past the usual " + days(s.median) + ".";
+}
+
+function chart(current, s) {
+  const recent = s.gaps.slice(0, 23).reverse(); // oldest first
+  const max = Math.max(current, ...recent.map((g) => g.days));
+  const bar = (d, cls, label) =>
+    '<div class="' + cls + '" style="height:' + Math.max(2, (d / max) * 100) +
+    '%" title="' + label + '"></div>';
+  const bars = recent.map((g) =>
+    bar(g.days, g === s.longest ? "record" : "", days(g.days) + " before " + escape(g.before.title))
+  ).join("") + bar(current, "now", days(current) + " and counting");
+
+  return '<section><h2>Every gap we know about, oldest first</h2>' +
+    '<div class="bars">' + bars + "</div>" +
+    '<p class="caption">The amber bar is the gap running right now.' +
+    (s.gaps.length > 23 ? " Showing the last 23 completed gaps." : "") + "</p></section>";
+}
+
+function log(videos) {
+  const rows = videos.slice(0, 8).map((v, i) => {
+    const prev = videos[i + 1];
+    const gap = prev ? (new Date(v.published) - new Date(prev.published)) / DAY : null;
+    return "<tr><td class=\"title\"><a href=\"https://www.youtube.com/watch?v=" + v.id + "\">" +
+      escape(v.title) + '</a><br><span class="date">' + fmtShort(v.published) + "</span></td>" +
+      '<td class="gap">' + (gap === null ? "—" : "+" + Math.round(gap) + "d") + "</td></tr>";
+  }).join("");
+  return "<section><h2>Recent videos</h2><table>" + rows + "</table></section>";
 }
 
 function render(data) {
-  const v = data && data.video;
-  if (!v || !v.published) {
-    el.app.classList.add("empty");
-    el.count.textContent = "—";
-    el.statement.textContent = "No video data yet.";
-    el.video.textContent = "Run the “Update video data” action in the repository, then reload.";
-    el.footer.innerHTML = '<a href="' + CHANNEL_URL + '">Current Concept on YouTube</a>';
+  const videos = (data && data.videos) || (data && data.video ? [data.video] : []);
+  if (!videos.length) {
+    el("count").textContent = "—";
+    el("statement").textContent = "No video data yet.";
+    el("video").textContent = "Run the “Update video data” action in the repository, then reload.";
+    el("footer").innerHTML = '<a href="' + CHANNEL_URL + '">Current Concept on YouTube</a>';
     return;
   }
 
-  const days = Math.max(0, Math.floor((Date.now() - new Date(v.published)) / DAY));
-  document.title = days + " days since Current Concept posted";
+  const latest = videos[0];
+  const current = Math.max(0, (Date.now() - new Date(latest.published)) / DAY);
+  const whole = Math.floor(current);
+  document.title = whole + " days since Current Concept posted";
 
-  el.count.innerHTML = days + '<sup>' + (days === 1 ? "day" : "days") + '</sup>';
-  el.statement.textContent = days === 0
+  el("count").innerHTML = whole + "<sup>" + (whole === 1 ? "day" : "days") + "</sup>";
+  el("statement").textContent = whole === 0
     ? "Current Concept posted today."
     : "since Current Concept last posted a full video.";
+  el("video").innerHTML =
+    'Last one: <a href="https://www.youtube.com/watch?v=' + latest.id + '">' +
+    escape(latest.title) + "</a>, " + fmtDate(latest.published) + ". Shorts don’t count.";
 
-  el.video.innerHTML =
-    'Last one: <a href="https://www.youtube.com/watch?v=' + v.id + '">' +
-    v.title.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c])) +
-    "</a>, " + fmtDate(v.published) + ". Shorts don’t count.";
+  const s = stats(videos);
+  let html = "<section><p class=\"verdict\">" + verdict(current, s) + "</p>" +
+    '<p class="due">' + dueLine(current, s, latest.published) + "</p></section>";
 
-  el.footer.innerHTML =
-    "Checked " + (data.checked ? fmtDate(data.checked) : "—") +
+  if (s.gaps.length) {
+    const span = (new Date(videos[0].published) - new Date(videos[videos.length - 1].published)) / DAY;
+    html += "<section><h2>The record so far</h2><div class=\"stats\">" +
+      stat(Math.round(s.median), "median gap, days") +
+      stat(Math.round(s.mean), "average gap, days") +
+      stat(Math.round(s.longest.days), "longest gap, days") +
+      stat(Math.round(s.shortest.days), "shortest gap, days") +
+      stat(videos.length, "videos tracked") +
+      stat(Math.round(span / 7), "weeks of history") +
+      "</div></section>";
+    html += chart(current, s);
+    html += log(videos);
+  }
+
+  el("stats-area").innerHTML = html;
+  el("footer").innerHTML = "Checked " + (data.checked ? fmtDate(data.checked) : "—") +
     ' · <a href="' + CHANNEL_URL + '">Current Concept on YouTube</a>';
 }
 
+function stat(value, label) {
+  return '<div class="stat"><b>' + value + "</b><span>" + label + "</span></div>";
+}
+
 fetch("data.json?t=" + Date.now(), { cache: "no-store" })
-  .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)))
+  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
   .then(render)
   .catch(() => render(null));
 </script>
