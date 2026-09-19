@@ -3,17 +3,6 @@
 A one-page site that counts the days since [@currentconcept](https://www.youtube.com/@currentconcept)
 last posted a full video. Shorts are excluded.
 
-## Setup
-
-1. Create a new **public** repository on GitHub.
-2. Drag the contents of this folder into it (or `git push` them). Keep the folder
-   structure — `.github/workflows/update.yml` has to stay where it is.
-3. **Settings → Pages → Source: Deploy from a branch**, branch `main`, folder `/ (root)`.
-4. **Actions tab → "Update video data" → Run workflow.** This fills in `data.json`;
-   until it runs, the page shows a placeholder.
-
-The site is then at `https://<your-username>.github.io/<repo-name>/`.
-
 ## How it refreshes
 
 `.github/workflows/update.yml` runs once a day, plus on every push, plus whenever
